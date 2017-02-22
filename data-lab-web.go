@@ -36,6 +36,8 @@ type ErrorResponse struct {
 type IPStatus struct {
   IP string `json:"ipaddr"`
   IsFree bool `json:"isfree"`
+  Output string `json:"output"`
+  Error error `json:"error"`
 }
 
 func rootHandler(w http.ResponseWriter, r *http.Request) {
@@ -117,17 +119,20 @@ func updateCurrentStatus(status []IPStatus) {
 }
 
 func getCurrentStatus() []IPStatus {
-  return CurrentIPStatus 
+  RulesLock.Lock()  
+  cpStatus := CurrentIPStatus
+  RulesLock.Unlock()
+  return cpStatus 
 }
 
 // return true if ip is up and false if ip in down
 func pingIP(ip string, status chan IPStatus) {
-  _, err := exec.Command(pingCommand, "-c", "5", "-w", pingDeadline, ip).CombinedOutput()
+  out, err := exec.Command(pingCommand, "-c", "5", "-w", pingDeadline, ip).CombinedOutput()
   if err != nil {
-    status <- IPStatus{ip, false}
+    status <- IPStatus{ip, true, fmt.Sprintf("%s", out), err}
     return
   }
-  status <- IPStatus{ip, true}
+  status <- IPStatus{ip, false, fmt.Sprintf("%s", out), nil}
 }
 
 func marshalErrorResponse(s string) []byte {
@@ -162,7 +167,7 @@ func findCommands() {
 func main() {
   port := os.Getenv("PORT")
   if port == "" {
-    port = "8080"
+    port = "80"
   }
   findCommands()
   
